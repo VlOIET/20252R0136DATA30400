@@ -10,6 +10,9 @@ import pandas as pd
 from sklearn.preprocessing import normalize
 
 def main():
+    print("=" * 60)
+    print("04. MAKE SILVERLABEL")
+    print("=" * 60)
     
     review_emb_path = DIR_CONFIG['processed_dir'] + "/bert_review_emb.pt"
     review_emb = torch.load(review_emb_path)
