@@ -16,7 +16,7 @@ def make_bert_input(row):
     class_keywords = row['keywords_raw'].replace(",", ", ")
 
     bert_input = f"""
-    This text describes the product category "{class_name}". It is related to {class_keywords}.
+    {class_name}. Related terms include {class_keywords}.
     """
     
     return bert_input
@@ -77,7 +77,7 @@ def main():
     review_emb_list = []
 
     batch_size = 64
-    for i in tqdm(range(0, len(df_class), batch_size)):
+    for i in tqdm(range(0, len(df_review), batch_size)):
         batch = df_review.iloc[i: i + batch_size]
         
         encoded = tokenizer(
@@ -100,7 +100,7 @@ def main():
         review_emb_list.append(mean_emb.cpu())
 
     review_emb_path = DIR_CONFIG['processed_dir'] + "/bert_review_emb.pt"
-    torch.save({"ids": class_ids, "embeddings": torch.cat(review_emb_list, dim=0)}, review_emb_path)
+    torch.save({"ids": review_ids, "embeddings": torch.cat(review_emb_list, dim=0)}, review_emb_path)
 
 if __name__== '__main__':
     main()

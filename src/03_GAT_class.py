@@ -19,7 +19,7 @@ def make_pos_edges(A):
     for (parent, child), val in np.ndenumerate(A):
         if val == 1:
             # 1-hop
-            pos_edges.add((parent, child))
+            pos_edges.add((child, parent))
 
             # 2-hop
             grandparents = np.where(A[:, parent] == 1)[0]
@@ -112,7 +112,7 @@ def main():
 
     # make adjacency matrix (directed)
     n_class = class_emb.shape[0]
-    A = np.eye(n_class, dtype=np.float32)
+    A = np.zeros((n_class, n_class), dtype=np.float32)
     for i, j in edges:
         A[i, j] = 1
 
