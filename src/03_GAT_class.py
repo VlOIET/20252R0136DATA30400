@@ -175,7 +175,9 @@ def main():
 
     print("pos score mean:", pos_score.mean().item())
     print("neg score mean:", neg_score.mean().item())
-    torch.save(model.state_dict(), "class_GAT.pt")
+
+    GAT_emb_path = DIR_CONFIG['GAT_dir'] + "/class_GAT.pt"
+    torch.save(model.state_dict(), GAT_emb_path)
 
     # GAT Inference for Class
     print("GAT Inference for Class")
@@ -183,7 +185,7 @@ def main():
     with torch.no_grad():
         class_emb = model(x, edge_index)
 
-    GAT_emb_path = DIR_CONFIG['processed_dir'] + "/GAT_class_embeddings.pt"
+    GAT_emb_path = DIR_CONFIG['processed_dir'] + "/GAT_class_emb.pt"
     torch.save(class_emb.cpu(), GAT_emb_path)
 
 if __name__== '__main__':
