@@ -2,7 +2,7 @@
 BERT Embedding
 """
 
-from config import CONFIG
+from config import DIR_CONFIG
 
 import torch
 import pandas as pd
@@ -35,7 +35,7 @@ def main():
 
     # BERT Embedding for class
     print("BERT Embedding for Class")
-    class_path = CONFIG['processed_dir'] + "/proc_class.csv"
+    class_path = DIR_CONFIG['processed_dir'] + "/proc_class.csv"
     df_class = pd.read_csv(class_path)
     df_class['bert_input'] = df_class.apply(make_bert_input, axis=1)
     
@@ -65,12 +65,12 @@ def main():
         mean_emb = sum_emb / sum_mask
         class_emb_list.append(mean_emb.cpu())
 
-    class_emb_path = CONFIG['processed_dir'] + "/bert_class_emb.pt"
-    torch.save({"ids": class_ids, "embeddings": class_emb_list}, class_emb_path)
+    class_emb_path = DIR_CONFIG['processed_dir'] + "/bert_class_emb.pt"
+    torch.save({"ids": class_ids, "embeddings": torch.cat(class_emb_list, dim=0)}, class_emb_path)
 
     # BERT Embedding for review
     print("BERT Embedding for Review")
-    review_path = CONFIG['processed_dir'] + "/proc_train_corpus.csv"
+    review_path = DIR_CONFIG['processed_dir'] + "/proc_train_corpus.csv"
     df_review = pd.read_csv(review_path)
     
     review_ids = df_review['review_id'].tolist()
@@ -99,8 +99,8 @@ def main():
         mean_emb = sum_emb / sum_mask
         review_emb_list.append(mean_emb.cpu())
 
-    review_emb_path = CONFIG['processed_dir'] + "/bert_review_emb.pt"
-    torch.save({"ids": class_ids, "embeddings": review_emb_list}, review_emb_path)
+    review_emb_path = DIR_CONFIG['processed_dir'] + "/bert_review_emb.pt"
+    torch.save({"ids": class_ids, "embeddings": torch.cat(review_emb_list, dim=0)}, review_emb_path)
 
 if __name__== '__main__':
     main()
