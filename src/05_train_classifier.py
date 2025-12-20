@@ -52,7 +52,7 @@ class ReviewDataset(Dataset):
         }
     
     def update_labels(self, new_label_df):
-        self.label_df = new_label_df
+        self.silverlabel_df = new_label_df
 
 class BertClassifier(nn.Module):
     def __init__(self, num_classes=531):
@@ -147,6 +147,8 @@ def main():
         model.eval()
 
         new_labels = []
+        new_scores = []
+
         for batch in tqdm(loader):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
@@ -157,16 +159,34 @@ def main():
             for p in probs:
                 idx = (p >= conf).nonzero(as_tuple=True)[0]
                 new_labels.append(idx.cpu().tolist())
+                new_scores.append(p[idx].cpu().tolist())
 
         # Merge silver + pseudo
+        max_k = 3
         merged_labels = []
         for i in range(len(df_labels)):
             base = set(df_labels.iloc[i]["labels"])
             pseudo = set(new_labels[i])
-            merged_labels.append(sorted(base | pseudo))
+            pseudo_scores = new_scores[i]
+
+            score_map = {l: 1.0 for l in base}   # silver는 score=1.0 가정
+            for l, s in zip(pseudo, pseudo_scores):
+                score_map[l] = max(score_map.get(l, 0), s)
+
+            sorted_labels = sorted(score_map.items(), key=lambda x: x[1], reverse=True)[:max_k]
+
+            merged_labels.append([l for l, _ in sorted_labels])
 
         df_labels["labels"] = merged_labels
         dataset.update_labels(df_labels)
+
+        lens = [len(l) for l in merged_labels]
+        s = pd.Series(lens)
+
+        print("\n[MERGED LABEL STATS]")
+        print(s.describe())
+        print("\nvalue counts (top 10):")
+        print(s.value_counts().sort_index().head(10))
 
     classifier_path = DIR_CONFIG['classifier_dir'] + "/classifier.pt"
     torch.save(model.state_dict(), classifier_path)

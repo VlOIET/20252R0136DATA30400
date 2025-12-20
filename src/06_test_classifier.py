@@ -24,7 +24,7 @@ SUBMISSION_PATH = "submission.csv"  # output file
 
 # --- Constants ---
 NUM_CLASSES = 531  # total number of classes (0–530)
-MIN_LABELS = 1     # minimum number of labels per sample
+MIN_LABELS = 2     # minimum number of labels per sample
 MAX_LABELS = 3     # maximum number of labels per sample
 
 # --- Load test corpus ---
@@ -138,10 +138,20 @@ with torch.no_grad():
         probs = torch.sigmoid(logits)
 
         # top-k (max 3)
-        topk_scores, topk_indices = torch.topk(probs, k=MAX_LABELS, dim=1)
+        conf = 0.75
+        min_labels = 2
+        max_lables = 3
 
-        for pid, indices in zip(batch["pid"], topk_indices):
-            labels = indices.tolist()
+        for pid, p in zip(batch["pid"], probs):
+            idx = (p >= conf).nonzero(as_tuple=True)[0]
+
+            if len(idx) < min_labels:
+                idx = torch.topk(p, k=min_labels).indices
+
+            if len(idx) > max_lables:
+                idx = idx[torch.argsort(p[idx], descending=True)[:max_lables]]
+
+            labels = idx.cpu().tolist()
 
             all_pids.append(pid)
             all_labels.append(labels)
@@ -151,7 +161,7 @@ with open(SUBMISSION_PATH, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(["id", "label"])
     for pid, labels in zip(all_pids, all_labels):
-     ls))])
+        writer.writerow([pid, ",".join(map(str, labels))])
 
 print(f"Dummy submission file saved to: {SUBMISSION_PATH}")
 print(f"Total samples: {len(all_pids)}, Classes per sample: {MIN_LABELS}-{MAX_LABELS}")

@@ -8,6 +8,6 @@ export PYTHONPATH=$(pwd)
 # python src/02_bert_embedding.py
 # python src/02_tfidf_embedding.py
 # python src/03_GAT_class.py
-python src/04_make_silverlabel.py
-#python src/05_train_classifier.py
-#python src/06_test_classifier.py
+# python src/04_make_silverlabel.py
+# python src/05_train_classifier.py
+python src/06_test_classifier.py
