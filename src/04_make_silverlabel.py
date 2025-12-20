@@ -5,26 +5,49 @@ Make Silverlabel
 from config import DIR_CONFIG
 
 import torch
+import pickle
 import numpy as np
 import pandas as pd
+
 from sklearn.preprocessing import normalize
+
+def row_minmax(x):
+    return (x - x.min(axis=1, keepdims=True)) / (
+        x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True) + 1e-8
+    )
 
 def main():
     print("=" * 60)
     print("04. MAKE SILVERLABEL")
     print("=" * 60)
     
-    review_emb_path = DIR_CONFIG['processed_dir'] + "/bert_review_emb.pt"
-    review_emb = torch.load(review_emb_path)
-    review_ids = review_emb['ids']
-    print(review_emb['embeddings'].shape)
-    class_emb_path = DIR_CONFIG['processed_dir'] + "/GAT_class_emb.pt"
-    class_emb = torch.load(class_emb_path)
+    # TFIDF
+    tfidf_review_emb_path = DIR_CONFIG['processed_dir'] + "/tfidf_review_emb.pkl"
+    with open(tfidf_review_emb_path, "rb") as f:
+        tfidf_review_emb = pickle.load(f)
+    tfidf_review_vecs = tfidf_review_emb["embeddings"]
+    tfidf_class_emb_path  = DIR_CONFIG['processed_dir'] + "/tfidf_class_emb.pt"
+    tfidf_class_emb = torch.load(tfidf_class_emb_path)
+    tfidf_class_vecs = tfidf_class_emb["embeddings"].numpy()
+
+    tfidf_sim_matrix = tfidf_review_vecs @ tfidf_class_vecs.T
+
+    # BERT
+    bert_review_emb_path = DIR_CONFIG['processed_dir'] + "/bert_review_emb.pt"
+    bert_review_emb = torch.load(bert_review_emb_path)
+    review_ids = bert_review_emb['ids']
+    bert_class_emb_path = DIR_CONFIG['processed_dir'] + "/GAT_class_emb.pt"
+    bert_class_emb = torch.load(bert_class_emb_path)
 
     # Cosine Similarity
-    review_emb = normalize(review_emb['embeddings'], axis=1)
-    class_emb = normalize(class_emb, axis=1)
-    sim_matrix = review_emb @ class_emb.T
+    bert_review_emb = normalize(bert_review_emb['embeddings'], axis=1)
+    bert_class_emb = normalize(bert_class_emb, axis=1)
+    
+    bert_sim_matrix = bert_review_emb @ bert_class_emb.T
+
+    # tfidf_norm = row_minmax(tfidf_sim_matrix)
+    # bert_norm = row_minmax(bert_sim_matrix)
+    sim_matrix = 0.3 * tfidf_sim_matrix + 0.7 * bert_sim_matrix
 
     # make silver label (top-K)
     labels, scores = [], []
