@@ -9,6 +9,8 @@ import pickle
 import numpy as np
 import pandas as pd
 
+from collections import Counter
+from collections import defaultdict
 from sklearn.preprocessing import normalize
 
 def row_minmax(x):
@@ -16,10 +18,42 @@ def row_minmax(x):
         x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True) + 1e-8
     )
 
+def build_child2parents(hierarchy_path):
+    child2parents = defaultdict(list)
+
+    with open(hierarchy_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            parent, child = map(int, line.split())
+            child2parents[child].append(parent)
+
+    return dict(child2parents)
+
+def remove_all_ancestors(labels, child2parents):
+    labels = set(labels)
+
+    changed = True
+    while changed:
+        changed = False
+        for l in list(labels):
+            for p in child2parents.get(l, []):
+                if p in labels:
+                    labels.remove(p)
+                    changed = True
+
+    return sorted(labels)
+
 def main():
     print("=" * 60)
     print("04. MAKE SILVERLABEL")
     print("=" * 60)
+
+    # hierarchy
+    hier_path = DIR_CONFIG['raw_dir'] + "/class_hierarchy.txt"
+    child2parents = build_child2parents(hier_path)
     
     # TFIDF
     tfidf_review_emb_path = DIR_CONFIG['processed_dir'] + "/tfidf_review_emb.pkl"
@@ -45,28 +79,41 @@ def main():
     
     bert_sim_matrix = bert_review_emb @ bert_class_emb.T
 
-    # tfidf_norm = row_minmax(tfidf_sim_matrix)
-    # bert_norm = row_minmax(bert_sim_matrix)
-    sim_matrix = 0.3 * tfidf_sim_matrix + 0.7 * bert_sim_matrix
+    tfidf_norm = row_minmax(tfidf_sim_matrix)
+    bert_norm = row_minmax(bert_sim_matrix)
+    sim_matrix = 0.3 * tfidf_norm + 0.7 * bert_norm
 
     # make silver label (top-K)
+    freq = Counter()
     labels, scores = [], []
-    threshold = 0.065
     min_k = 1
     max_k = 3
+    candidate_k = 10
+    alpha = 0.7
 
     for row in sim_matrix:
-        idx = np.where(row >= threshold)[0]
+        cand = np.argsort(-row)[:candidate_k]
 
-        if len(idx) < min_k:
-            idx = np.argsort(-row)[:min_k]
+        penalized = [(c, row[c] - alpha * np.log(1 + freq[c])) for c in cand]
+        penalized.sort(key=lambda x: x[1], reverse=True)
 
-        if len(idx) > max_k:
-            idx = idx[np.argsort(-row[idx])[:max_k]]
+        selected = []
+        for c, _ in penalized:
+            selected.append(c)
+            selected = remove_all_ancestors(selected, child2parents)
 
-        labels.append(idx.tolist())
-        scores.append(row[idx].tolist())
-    
+            if len(selected) >= max_k:
+                break
+
+        if len(selected) < min_k:
+            selected = [cand[0]]
+
+        labels.append(selected)
+        scores.append(row[selected].tolist())
+
+        for c in selected:
+            freq[c] += 1
+
     df_silver = pd.DataFrame({
         "review_id": review_ids,
         "silver_labels": labels,

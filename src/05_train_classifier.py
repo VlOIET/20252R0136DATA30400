@@ -89,6 +89,8 @@ def compute_pos_weight(df_labels, num_classes, device):
 
     for c, f in freq.items():
         pos_weight[c] = 1.0 / np.log(1.0 + f)
+    
+    print("top label freq:", freq.most_common(5))
 
     return pos_weight.to(device)
 
@@ -145,9 +147,6 @@ def main():
 
     hier_path = DIR_CONFIG['raw_dir'] + "/class_hierarchy.txt"
     child2parents = build_child2parents(hier_path)
-    print(child2parents[1])
-    print(child2parents[2])
-    print(child2parents[179])
 
     tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
     dataset = ReviewDataset(df_review, df_labels, tokenizer)
@@ -157,21 +156,21 @@ def main():
 
     model = BertClassifier().to(device)
     for param in model.bert.parameters():
-        param.requires_grad = False
+        param.requires_grad = True
 
-    for layer in model.bert.encoder.layer[-3:]:
+    """ for layer in model.bert.encoder.layer[-3:]:
         for param in layer.parameters():
-            param.requires_grad = True
+            param.requires_grad = True """
 
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=3e-5)
     loss_fn = nn.BCEWithLogitsLoss()
 
-    epochs = 3
+    epochs = 1
     conf_schedule = {1: 0.8, 2: 0.75, 3: 0.7}
 
     for epoch in tqdm(range(1, epochs + 1)):
-        pos_weight = compute_pos_weight(df_labels, 531, device)
-        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)     
+        # pos_weight = compute_pos_weight(df_labels, 531, device)
+        loss_fn = nn.BCEWithLogitsLoss()     
 
         model.train()
         total_loss = 0
@@ -192,7 +191,7 @@ def main():
 
         print(f"[Epoch {epoch}] loss = {total_loss/len(loader_train):.4f}")
 
-        # Generate pseudo label
+    """         # Generate pseudo label
         conf = conf_schedule[epoch]
         print(f"Generate pseudo labels with conf >= {conf}")
 
@@ -221,16 +220,17 @@ def main():
             pseudo_labels = new_labels[i]
             pseudo_scores = new_scores[i]
 
-            score_map = {l: 1.0 for l in base}
+            score_map = {l: 0.6 for l in base}
             for l, s in zip(pseudo_labels, pseudo_scores):
                 score_map[l] = max(score_map.get(l, 0), s)
 
-            sorted_labels = sorted(score_map.items(), key=lambda x: x[1], reverse=True)[:max_k]
+            sorted_labels = sorted(score_map.items(), key=lambda x: x[1], reverse=True)
 
-            labels = [l for l, _ in sorted_labels]
+            labels = [l for l, _ in sorted_labels[:10]]
 
             # hierarchy pruning 추가
             labels = remove_all_ancestors(labels, child2parents)
+            labels = labels[:max_k]
 
             # fallback
             if len(labels) == 0:
@@ -247,7 +247,7 @@ def main():
         print("\n[MERGED LABEL STATS]")
         print(s.describe())
         print("\nvalue counts (top 10):")
-        print(s.value_counts().sort_index().head(10))
+        print(s.value_counts().sort_index().head(10)) """
 
     classifier_path = DIR_CONFIG['classifier_dir'] + "/classifier.pt"
     torch.save(model.state_dict(), classifier_path)
