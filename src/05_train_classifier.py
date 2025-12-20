@@ -174,10 +174,10 @@ def main():
         for param in layer.parameters():
             param.requires_grad = True """
 
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=3e-5)
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-5)
     loss_fn = nn.BCEWithLogitsLoss()
 
-    epochs = 1
+    epochs = 3
     conf_schedule = {1: 0.8, 2: 0.75, 3: 0.7}
 
     for epoch in tqdm(range(1, epochs + 1)):
