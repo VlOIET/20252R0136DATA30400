@@ -11,6 +11,7 @@ import pandas as pd
 import torch.nn as nn
 
 from tqdm import tqdm
+from collections import Counter
 from transformers import AutoModel
 from transformers import AutoTokenizer
 from transformers import DataCollatorWithPadding
@@ -77,6 +78,18 @@ class BertClassifier(nn.Module):
         logits = self.classifier(mean_emb)
         return logits
 
+def compute_pos_weight(df_labels, num_classes, device):
+    freq = Counter()
+    for labels in df_labels["labels"]:
+        for l in labels:
+            freq[l] += 1
+
+    pos_weight = torch.ones(num_classes)
+
+    for c, f in freq.items():
+        pos_weight[c] = 1.0 / np.log(1.0 + f)
+
+    return pos_weight.to(device)
 
 def main():
     print("=" * 60)
@@ -118,9 +131,12 @@ def main():
     loss_fn = nn.BCEWithLogitsLoss()
 
     epochs = 3
-    conf_schedule = {1: 0.95, 2: 0.9, 3: 0.85}
+    conf_schedule = {1: 0.8, 2: 0.75, 3: 0.7}
 
     for epoch in tqdm(range(1, epochs + 1)):
+        pos_weight = compute_pos_weight(df_labels, 531, device)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)     
+
         model.train()
         total_loss = 0
 
