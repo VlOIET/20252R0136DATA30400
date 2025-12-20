@@ -60,23 +60,35 @@ class BertClassifier(nn.Module):
     def __init__(self, num_classes=531):
         super().__init__()
         self.bert = AutoModel.from_pretrained('bert-base-uncased')
-        self.classifier = nn.Linear(
-            self.bert.config.hidden_size,
-            num_classes
+        hidden = self.bert.config.hidden_size
+
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden, num_classes)
         )
 
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids, attention_mask, return_emb=False):
         output = self.bert(
             input_ids=input_ids,
             attention_mask=attention_mask
         )
         
-        token_emb = output.last_hidden_state
+        # legacy mean pooling code
+        """ token_emb = output.last_hidden_state
         mask = attention_mask.unsqueeze(-1).float()
         sum_emb = torch.sum(token_emb * mask, dim=1)
         sum_mask = mask.sum(dim=1)
         mean_emb = sum_emb / sum_mask
         logits = self.classifier(mean_emb)
+        
+        if return_emb:
+            return logits, mean_emb """
+        
+        cls_emb = output.last_hidden_state[:, 0]
+        logits = self.classifier(cls_emb)
+        
         return logits
 
 def compute_pos_weight(df_labels, num_classes, device):
@@ -181,6 +193,10 @@ def main():
             labels = batch['labels'].to(device)
 
             logits = model(input_ids, attention_mask)
+
+            if random.random() < 0.001:
+                print("A) logits std(mean):", logits.std(dim=0).mean().item())
+
             loss = loss_fn(logits, labels)
 
             optimizer.zero_grad()
