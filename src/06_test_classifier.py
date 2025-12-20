@@ -42,6 +42,10 @@ def load_corpus(path):
 pid2text_test = load_corpus(TEST_CORPUS_PATH)
 pid_list_test = list(pid2text_test.keys())
 
+print("=" * 60)
+print("06. TEST CLASSIFIER")
+print("=" * 60)
+
 # dataset
 class TestDataset(Dataset):
     def __init__(self, pid_list, pid2text, tokenizer):
@@ -147,7 +151,7 @@ with open(SUBMISSION_PATH, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(["id", "label"])
     for pid, labels in zip(all_pids, all_labels):
-        writer.writerow([pid, ",".join(map(str, labels))])
+     ls))])
 
 print(f"Dummy submission file saved to: {SUBMISSION_PATH}")
 print(f"Total samples: {len(all_pids)}, Classes per sample: {MIN_LABELS}-{MAX_LABELS}")

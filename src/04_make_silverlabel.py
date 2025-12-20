@@ -51,19 +51,27 @@ def main():
 
     # make silver label (top-K)
     labels, scores = [], []
-    top_k = 3
+    threshold = 0.3
+    min_k = 1
 
     for row in sim_matrix:
-        idx = np.argsort(-row)[:top_k]
+        idx = np.where(row >= threshold)[0]
+
+        if len(idx) < min_k:
+            idx = np.argsort(-row)[:min_k]
 
         labels.append(idx.tolist())
         scores.append(row[idx].tolist())
-
+    
     df_silver = pd.DataFrame({
         "review_id": review_ids,
         "silver_labels": labels,
         "silver_scores": scores
     })
+
+    # for choose threshold 
+    lens = [len(l) for l in labels]
+    print(pd.Series(lens).describe())
 
     silver_label_pt_path = DIR_CONFIG['processed_dir'] + "/silver_label.pt"
     torch.save(df_silver, silver_label_pt_path)

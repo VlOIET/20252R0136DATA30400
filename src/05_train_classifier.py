@@ -33,7 +33,7 @@ class ReviewDataset(Dataset):
         silverlabel_row = self.silverlabel_df.iloc[idx]
 
         text = review_row['review_text']
-        labels = silverlabel_row['silver_labels']
+        labels = silverlabel_row['labels']
 
         enc = self.tokenizer(
             text,
@@ -50,6 +50,9 @@ class ReviewDataset(Dataset):
             'attention_mask': enc['attention_mask'].squeeze(0),
             'labels': y
         }
+    
+    def update_labels(self, new_label_df):
+        self.label_df = new_label_df
 
 class BertClassifier(nn.Module):
     def __init__(self, num_classes=531):
@@ -93,14 +96,13 @@ def main():
     
     silverlabel_path = DIR_CONFIG['processed_dir'] + "/silver_label.pt"
     silverlabel_pt = torch.load(silverlabel_path)
-    df_silver = pd.DataFrame({
+    df_labels = pd.DataFrame({
         "review_id": silverlabel_pt['review_id'],
-        "silver_labels": silverlabel_pt['silver_labels'],
-        "silver_scores": silverlabel_pt['silver_scores']
+        "labels": silverlabel_pt['silver_labels']
     })
     
     tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-    dataset = ReviewDataset(df_review, df_silver, tokenizer)
+    dataset = ReviewDataset(df_review, df_labels, tokenizer)
     data_collator = DataCollatorWithPadding(tokenizer)
     loader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=data_collator)
     
@@ -116,9 +118,12 @@ def main():
     loss_fn = nn.BCEWithLogitsLoss()
 
     epochs = 3
-    model.train()
+    conf_schedule = {1: 0.95, 2: 0.9, 3: 0.85}
+
     for epoch in tqdm(range(1, epochs + 1)):
+        model.train()
         total_loss = 0
+
         for batch in tqdm(loader):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
@@ -134,6 +139,34 @@ def main():
             total_loss += loss.item()
 
         print(f"[Epoch {epoch}] loss = {total_loss/len(loader):.4f}")
+
+        # Generate pseudo label
+        conf = conf_schedule[epoch]
+        print(f"Generate pseudo labels with conf >= {conf}")
+
+        model.eval()
+
+        new_labels = []
+        for batch in tqdm(loader):
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+
+            logits = model(input_ids, attention_mask)
+            probs = torch.sigmoid(logits)
+
+            for p in probs:
+                idx = (p >= conf).nonzero(as_tuple=True)[0]
+                new_labels.append(idx.cpu().tolist())
+
+        # Merge silver + pseudo
+        merged_labels = []
+        for i in range(len(df_labels)):
+            base = set(df_labels.iloc[i]["labels"])
+            pseudo = set(new_labels[i])
+            merged_labels.append(sorted(base | pseudo))
+
+        df_labels["labels"] = merged_labels
+        dataset.update_labels(df_labels)
 
     classifier_path = DIR_CONFIG['classifier_dir'] + "/classifier.pt"
     torch.save(model.state_dict(), classifier_path)
