@@ -51,14 +51,18 @@ def main():
 
     # make silver label (top-K)
     labels, scores = [], []
-    threshold = 0.3
+    threshold = 0.065
     min_k = 1
+    max_k = 3
 
     for row in sim_matrix:
         idx = np.where(row >= threshold)[0]
 
         if len(idx) < min_k:
             idx = np.argsort(-row)[:min_k]
+
+        if len(idx) > max_k:
+            idx = idx[np.argsort(-row[idx])[:max_k]]
 
         labels.append(idx.tolist())
         scores.append(row[idx].tolist())
