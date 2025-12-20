@@ -12,6 +12,7 @@ import torch.nn as nn
 
 from tqdm import tqdm
 from collections import Counter
+from collections import defaultdict
 from transformers import AutoModel
 from transformers import AutoTokenizer
 from transformers import DataCollatorWithPadding
@@ -91,6 +92,34 @@ def compute_pos_weight(df_labels, num_classes, device):
 
     return pos_weight.to(device)
 
+def build_child2parents(hierarchy_path):
+    child2parents = defaultdict(list)
+
+    with open(hierarchy_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            parent, child = map(int, line.split())
+            child2parents[child].append(parent)
+
+    return dict(child2parents)
+
+def remove_all_ancestors(labels, child2parents):
+    labels = set(labels)
+
+    changed = True
+    while changed:
+        changed = False
+        for l in list(labels):
+            for p in child2parents.get(l, []):
+                if p in labels:
+                    labels.remove(p)
+                    changed = True
+
+    return sorted(labels)
+
 def main():
     print("=" * 60)
     print("05. TRAIN CLASSIFIER")
@@ -113,12 +142,19 @@ def main():
         "review_id": silverlabel_pt['review_id'],
         "labels": silverlabel_pt['silver_labels']
     })
-    
+
+    hier_path = DIR_CONFIG['raw_dir'] + "/class_hierarchy.txt"
+    child2parents = build_child2parents(hier_path)
+    print(child2parents[1])
+    print(child2parents[2])
+    print(child2parents[179])
+
     tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
     dataset = ReviewDataset(df_review, df_labels, tokenizer)
     data_collator = DataCollatorWithPadding(tokenizer)
-    loader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=data_collator)
-    
+    loader_train = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=data_collator)
+    loader_eval  = DataLoader(dataset, batch_size=64, shuffle=False, collate_fn=data_collator)
+
     model = BertClassifier().to(device)
     for param in model.bert.parameters():
         param.requires_grad = False
@@ -140,7 +176,7 @@ def main():
         model.train()
         total_loss = 0
 
-        for batch in tqdm(loader):
+        for batch in tqdm(loader_train):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
@@ -154,7 +190,7 @@ def main():
 
             total_loss += loss.item()
 
-        print(f"[Epoch {epoch}] loss = {total_loss/len(loader):.4f}")
+        print(f"[Epoch {epoch}] loss = {total_loss/len(loader_train):.4f}")
 
         # Generate pseudo label
         conf = conf_schedule[epoch]
@@ -165,7 +201,7 @@ def main():
         new_labels = []
         new_scores = []
 
-        for batch in tqdm(loader):
+        for batch in tqdm(loader_eval):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
 
@@ -182,16 +218,25 @@ def main():
         merged_labels = []
         for i in range(len(df_labels)):
             base = set(df_labels.iloc[i]["labels"])
-            pseudo = set(new_labels[i])
+            pseudo_labels = new_labels[i]
             pseudo_scores = new_scores[i]
 
-            score_map = {l: 1.0 for l in base}   # silver는 score=1.0 가정
-            for l, s in zip(pseudo, pseudo_scores):
+            score_map = {l: 1.0 for l in base}
+            for l, s in zip(pseudo_labels, pseudo_scores):
                 score_map[l] = max(score_map.get(l, 0), s)
 
             sorted_labels = sorted(score_map.items(), key=lambda x: x[1], reverse=True)[:max_k]
 
-            merged_labels.append([l for l, _ in sorted_labels])
+            labels = [l for l, _ in sorted_labels]
+
+            # hierarchy pruning 추가
+            labels = remove_all_ancestors(labels, child2parents)
+
+            # fallback
+            if len(labels) == 0:
+                labels = [sorted_labels[0][0]]
+
+            merged_labels.append(labels)
 
         df_labels["labels"] = merged_labels
         dataset.update_labels(df_labels)
